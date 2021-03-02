@@ -3,9 +3,14 @@
   <h1 class = "heading">Compose Page</h1>
   <h6 class ="heading1">Share Anything you want to reveal annonymously</h6>
   <h6 class = "heading1">We Didn't Reveal Your Name</h6>
-  <form class="form-group" action="/compose" method="post">
+  <form class="form-group" action="/userSecret" method="post">
       <input class="form-control col-sm-4" type="text" name="secret" placeholder="Enter Anything You Wish">
-      <button  class="btn btn-primary" type="submit">Post</button>
+      <button  class="btn btn-primary" type="submit">Submit</button>
   </form>
+  <h6 class = "heading1"><%= userSecret %></h6>
+
+  <a href="/">Home</a>
+  <a href="/logout">LogOut</a>
+
 
 <%- include("partials/footer") -%>

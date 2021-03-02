@@ -5,9 +5,10 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const ejs = require('ejs');
 const mongoose = require('mongoose');
-const encrypt = require('mongoose-encryption');
-const bcrypt = require('bcrypt');
-const saltRounds = 10;
+const session = require('express-session');
+const passport = require('passport');
+const passportLocalMongoose = require('passport-local-mongoose');
+
 
 
 const app = express();
@@ -17,22 +18,52 @@ app.set('view engine','ejs');
 
 
 
+app.use(session({
+  secret : process.env.SECRET_KEY,
+  resave : false,
+  saveUninitialized : true
+}));
+
+app.use(passport.initialize());
+app.use(passport.session());
+
+
 mongoose.connect("mongodb://localhost:27017/secretsDB", {useNewUrlParser: true, useUnifiedTopology: true});
+
+mongoose.set('useCreateIndex', true);
 
 
 const userSchema = new mongoose.Schema({
-  email : String,
-  password : String
+  username : String,
+  password : String,
+  secret : String,
+  googleId : String
 });
-
-userSchema.plugin(encrypt, { secret : process.env.SECRET_KEY, encryptedFields: ['password'] });
-
+userSchema.plugin(passportLocalMongoose);
 
 const User = mongoose.model('User',userSchema);
 
+
+passport.use(User.createStrategy());
+
+passport.serializeUser(User.serializeUser());
+passport.deserializeUser(User.deserializeUser());
+
+
+
+
 //Home Page
 app.get("/",function(req,res){
-  res.render("home");
+  User.find({ secret : {$ne : null}},function(err, foundUsers){
+    if(err){
+      console.log(err);
+    }else{
+      if(foundUsers){
+        console.log(foundUsers);
+        res.render("home",{userWithSecret : foundUsers});
+      }
+    }
+  })
 });
 
 
@@ -42,20 +73,19 @@ app.get("/login",function(req,res){
 });
 
 app.post("/login",function(req,res){
-  const useremail = req.body.email;
-  const userPassword = req.body.password;
-  User.findOne({email : useremail},function(err,foundUser){
-      if(!err){
-          if(foundUser){
-            bcrypt.compare(userPassword, foundUser.password, function(err, result) {
-                if(result === true){
-                  res.render("compose");
-                }else{
-                  res.redirect("/login");
-                }
-          });
-        }
-      }
+  const user = new User({
+    username : req.body.username,
+    password : req.body.password
+  });
+  req.login(user,function(err){
+    if(err){
+      console.log(err);
+      res.redirect("/login");
+    }else{
+      passport.authenticate("local")(req,res,function(){
+        res.redirect("/userSecret");
+      });
+    }
   });
 });
 
@@ -67,31 +97,54 @@ app.get("/register",function(req,res){
 });
 
 app.post("/register",function(req,res){
-  const useremail = req.body.email;
-  const userPassword = req.body.password;
-  bcrypt.hash(userPassword, saltRounds, function(err, hash) {
-      if(!err){
-        const newUser = new User({
-          email : useremail,
-          password: hash
-        });
-          newUser.save(function(err){
-            if(!err){
-              res.render("compose");
-            }else{
-              console.log(err);
-            }
+  User.register({username : req.body.username}, req.body.password,function(err,user){
+    if(!err){
+      passport.authenticate('local')(req,res,function(err){
+            console.log("User Registered");
+                res.redirect('/userSecret');
           });
-      }
+    }else{
+      console.log(err);
+      res.redirect("/register");
+    }
   });
 });
 
 
-//Compose Route post
+//Secret get and post Route
 
-app.post("/compose",function(req,res){
-  //if user is authenticated
-  const secret = req.body.secret;
+app.get("/userSecret",function(req,res){
+  if(req.isAuthenticated()){
+    //console.log(req.user.secret);
+    res.render("compose",{ userSecret : req.user.secret});
+  }else{
+    res.render("login");
+  }
+});
+
+app.post("/userSecret",function(req,res){
+  const submittedSecret = req.body.secret;
+  //console.log(req.user);
+  User.findById(req.user.id, function(err,foundUser){
+    if(!err){
+      if(foundUser){
+        foundUser.secret = submittedSecret;
+        foundUser.save(function(err){
+          if(!err){
+            console.log("secrets Saved");
+            res.redirect("/");
+          }
+        });
+      }
+    }
+  });
+});
+
+
+
+
+app.get("/logout",function(req,res){
+  req.logout();
   res.redirect("/");
 });
 
